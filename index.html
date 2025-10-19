@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartoon Pong Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            position: relative;
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 3em;
+            text-shadow: 4px 4px 0px #ff6b6b, 8px 8px 0px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        #gameCanvas {
+            border: 8px solid #fff;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            background: linear-gradient(180deg, #1a1a2e 0%, #0f3460 100%);
+            cursor: none;
+        }
+
+        .score {
+            position: absolute;
+            top: 100px;
+            color: #fff;
+            font-size: 3em;
+            font-weight: bold;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.5);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        #playerScore {
+            left: 100px;
+        }
+
+        #aiScore {
+            right: 100px;
+        }
+
+        .controls {
+            margin-top: 20px;
+            color: #fff;
+            font-size: 1.2em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .star {
+            position: absolute;
+            background: #fff;
+            border-radius: 50%;
+            animation: twinkle 2s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.5); }
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 107, 107, 0.95);
+            padding: 40px 60px;
+            border-radius: 30px;
+            border: 6px solid #fff;
+            color: #fff;
+            font-size: 2.5em;
+            font-weight: bold;
+            text-shadow: 3px 3px 0px rgba(0,0,0,0.3);
+            display: none;
+            animation: popIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        @keyframes fadeOut {
+            0% { 
+                opacity: 1; 
+                transform: translate(-50%, -50%) scale(1);
+            }
+            100% { 
+                opacity: 0; 
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+        }
+
+        .restart-btn {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 0.6em;
+            background: #fff;
+            color: #ff6b6b;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            font-family: 'Comic Sans MS', cursive;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 CARTOON PONG 🎮</h1>
+        <div class="score" id="playerScore">0</div>
+        <div class="score" id="aiScore">0</div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="controls">
+            Use ⬆️ Arrow Up and ⬇️ Arrow Down to play!
+        </div>
+        <div class="game-over" id="gameOver">
+            <div id="winnerText"></div>
+            <button class="restart-btn" onclick="restartGame()">Play Again! 🎯</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Create background stars
+        for (let i = 0; i < 20; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.width = Math.random() * 3 + 'px';
+            star.style.height = star.style.width;
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.animationDelay = Math.random() * 2 + 's';
+            document.body.appendChild(star);
+        }
+
+        // Game variables
+        let playerScore = 0;
+        let aiScore = 0;
+        const winningScore = 5;
+        let gameRunning = true;
+
+        // Paddle properties
+        const paddleWidth = 15;
+        const paddleHeight = 100;
+        const paddleSpeed = 8;
+
+        const player = {
+            x: 20,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            dy: 0,
+            color: '#ff6b6b',
+            trail: []
+        };
+
+        const ai = {
+            x: canvas.width - 20 - paddleWidth,
+            y: canvas.height / 2 - paddleHeight / 2,
+            width: paddleWidth,
+            height: paddleHeight,
+            speed: 4,
+            color: '#4ecdc4',
+            trail: []
+        };
+
+        // Ball properties
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 12,
+            dx: 5,
+            dy: 3,
+            color: '#ffe66d',
+            trail: [],
+            particles: [],
+            baseSpeed: 5
+        };
+
+        // Power-ups
+        let powerUps = [];
+        let activePowerUps = [];
+        const powerUpTypes = [
+            { type: 'bigBall', color: '#aa96da', emoji: '🎈', name: 'Big Ball' },
+            { type: 'smallBall', color: '#fcbad3', emoji: '⚪', name: 'Small Ball' },
+            { type: 'invisible', color: '#a8dadc', emoji: '👻', name: 'Invisible' }
+        ];
+
+        // Particle system for ball trail
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 5 + 2;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.01;
+            }
+
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = ball.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // PowerUp class
+        class PowerUp {
+            constructor() {
+                this.type = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                this.x = Math.random() * (canvas.width - 100) + 50;
+                this.y = Math.random() * (canvas.height - 100) + 50;
+                this.radius = 20;
+                this.rotation = 0;
+                this.pulseScale = 1;
+                this.particles = [];
+            }
+
+            update() {
+                this.rotation += 0.05;
+                this.pulseScale = 1 + Math.sin(Date.now() / 200) * 0.2;
+                
+                // Add sparkle particles
+                if (Math.random() > 0.8) {
+                    this.particles.push({
+                        x: this.x + (Math.random() - 0.5) * 40,
+                        y: this.y + (Math.random() - 0.5) * 40,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: (Math.random() - 0.5) * 2,
+                        life: 1
+                    });
+                }
+
+                this.particles = this.particles.filter(p => p.life > 0);
+                this.particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= 0.02;
+                });
+            }
+
+            draw() {
+                // Draw particles
+                this.particles.forEach(p => {
+                    ctx.save();
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = this.type.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                });
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.scale(this.pulseScale, this.pulseScale);
+
+                // Glow
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = this.type.color;
+
+                // Circle background
+                ctx.fillStyle = this.type.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // White border
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.shadowBlur = 0;
+
+                // Draw emoji
+                ctx.font = '25px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.type.emoji, 0, 0);
+
+                ctx.restore();
+            }
+
+            checkCollision(ball) {
+                const dx = ball.x - this.x;
+                const dy = ball.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                return distance < ball.radius + this.radius;
+            }
+        }
+
+        // Spawn power-up randomly
+        function spawnPowerUp() {
+            if (powerUps.length < 2 && Math.random() > 0.98) {
+                powerUps.push(new PowerUp());
+            }
+        }
+
+        // Apply power-up effect
+        function applyPowerUp(powerUp) {
+            const effect = {
+                type: powerUp.type.type,
+                duration: 5000,
+                startTime: Date.now()
+            };
+
+            // Create explosion animation
+            for (let i = 0; i < 30; i++) {
+                ball.particles.push(new Particle(powerUp.x, powerUp.y));
+            }
+
+            switch (powerUp.type.type) {
+                case 'bigBall':
+                    ball.radius = 20;
+                    showPowerUpText('🎈 Big Ball!');
+                    break;
+                case 'smallBall':
+                    ball.radius = 8;
+                    showPowerUpText('⚪ Small Ball!');
+                    break;
+                case 'invisible':
+                    effect.duration = 4000;
+                    showPowerUpText('👻 Invisible Ball!');
+                    break;
+            }
+
+            activePowerUps.push(effect);
+        }
+
+        // Show power-up text notification
+        function showPowerUpText(text) {
+            const notification = document.createElement('div');
+            notification.textContent = text;
+            notification.style.position = 'absolute';
+            notification.style.top = '50%';
+            notification.style.left = '50%';
+            notification.style.transform = 'translate(-50%, -50%)';
+            notification.style.color = '#fff';
+            notification.style.fontSize = '2em';
+            notification.style.fontWeight = 'bold';
+            notification.style.textShadow = '3px 3px 6px rgba(0,0,0,0.8)';
+            notification.style.animation = 'fadeOut 2s forwards';
+            notification.style.pointerEvents = 'none';
+            notification.style.zIndex = '1000';
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                document.body.removeChild(notification);
+            }, 2000);
+        }
+
+        // Update active power-ups
+        function updatePowerUps() {
+            const currentTime = Date.now();
+            activePowerUps = activePowerUps.filter(effect => {
+                if (currentTime - effect.startTime > effect.duration) {
+                    // Reset effects
+                    if (effect.type === 'bigBall' || effect.type === 'smallBall') {
+                        ball.radius = 12;
+                    }
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        // Input handling
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Draw rounded rectangle
+        function drawRoundRect(x, y, width, height, radius, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Draw paddle with glow effect
+        function drawPaddle(paddle) {
+            // Glow effect
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = paddle.color;
+            
+            // Main paddle
+            drawRoundRect(paddle.x, paddle.y, paddle.width, paddle.height, 8, paddle.color);
+            
+            // Highlight
+            ctx.shadowBlur = 0;
+            const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x + paddle.width, paddle.y);
+            gradient.addColorStop(0, 'rgba(255,255,255,0.5)');
+            gradient.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(paddle.x, paddle.y, paddle.width / 2, paddle.height);
+
+            // Trail effect
+            paddle.trail.push({x: paddle.x, y: paddle.y, alpha: 0.5});
+            if (paddle.trail.length > 5) paddle.trail.shift();
+
+            paddle.trail.forEach((pos, i) => {
+                ctx.save();
+                ctx.globalAlpha = pos.alpha * (i / paddle.trail.length);
+                ctx.fillStyle = paddle.color;
+                drawRoundRect(pos.x, pos.y, paddle.width, paddle.height, 8, paddle.color);
+                ctx.restore();
+            });
+        }
+
+        // Draw ball with trail
+        function drawBall() {
+            // Check if ball is invisible
+            const isInvisible = activePowerUps.some(p => p.type === 'invisible');
+            
+            // Update particles
+            ball.particles = ball.particles.filter(p => p.life > 0);
+            ball.particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Add new particle
+            if (Math.random() > 0.5) {
+                ball.particles.push(new Particle(ball.x, ball.y));
+            }
+
+            // Draw multiball effect
+            const hasMultiball = activePowerUps.some(p => p.type === 'multiball');
+            if (hasMultiball) {
+                for (let i = 0; i < 3; i++) {
+                    const angle = (Date.now() / 500 + i * 120) % 360;
+                    const rad = (angle * Math.PI) / 180;
+                    const offsetX = Math.cos(rad) * 30;
+                    const offsetY = Math.sin(rad) * 30;
+                    
+                    ctx.save();
+                    ctx.globalAlpha = 0.5;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = ball.color;
+                    ctx.fillStyle = ball.color;
+                    ctx.beginPath();
+                    ctx.arc(ball.x + offsetX, ball.y + offsetY, ball.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            if (isInvisible) {
+                // Draw invisible ball (faint outline)
+                ctx.save();
+                ctx.globalAlpha = 0.2;
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+                return;
+            }
+
+            // Ball glow
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = ball.color;
+            
+            // Main ball
+            const gradient = ctx.createRadialGradient(ball.x - 3, ball.y - 3, 0, ball.x, ball.y, ball.radius);
+            gradient.addColorStop(0, '#fff');
+            gradient.addColorStop(0.3, ball.color);
+            gradient.addColorStop(1, '#ff9f43');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ball outline
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+
+            // Sparkle effect
+            for (let i = 0; i < 3; i++) {
+                const angle = (Date.now() / 500 + i * 120) % 360;
+                const rad = (angle * Math.PI) / 180;
+                const x = ball.x + Math.cos(rad) * (ball.radius + 5);
+                const y = ball.y + Math.sin(rad) * (ball.radius + 5);
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Draw center line
+        function drawCenterLine() {
+            ctx.setLineDash([10, 15]);
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Update player paddle
+        function updatePlayer() {
+            if (keys['ArrowUp']) {
+                player.dy = -paddleSpeed;
+            } else if (keys['ArrowDown']) {
+                player.dy = paddleSpeed;
+            } else {
+                player.dy = 0;
+            }
+
+            player.y += player.dy;
+
+            // Boundary check
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.height > canvas.height) {
+                player.y = canvas.height - player.height;
+            }
+        }
+
+        // Update AI paddle
+        function updateAI() {
+            const aiCenter = ai.y + ai.height / 2;
+            const ballCenter = ball.y;
+
+            if (aiCenter < ballCenter - 35) {
+                ai.y += ai.speed;
+            } else if (aiCenter > ballCenter + 35) {
+                ai.y -= ai.speed;
+            }
+
+            // Boundary check
+            if (ai.y < 0) ai.y = 0;
+            if (ai.y + ai.height > canvas.height) {
+                ai.y = canvas.height - ai.height;
+            }
+        }
+
+        // Update ball
+        function updateBall() {
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Top and bottom collision
+            if (ball.y - ball.radius < 0 || ball.y + ball.radius > canvas.height) {
+                ball.dy *= -1;
+                createExplosion(ball.x, ball.y);
+            }
+
+            // Player paddle collision
+            if (ball.x - ball.radius < player.x + player.width &&
+                ball.y > player.y && ball.y < player.y + player.height &&
+                ball.dx < 0) {
+                ball.dx = Math.abs(ball.dx) * 1.05;
+                const hitPos = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
+                ball.dy = hitPos * 8;
+                createExplosion(ball.x, ball.y);
+            }
+
+            // AI paddle collision
+            if (ball.x + ball.radius > ai.x &&
+                ball.y > ai.y && ball.y < ai.y + ai.height &&
+                ball.dx > 0) {
+                ball.dx = -Math.abs(ball.dx) * 1.05;
+                const hitPos = (ball.y - (ai.y + ai.height / 2)) / (ai.height / 2);
+                ball.dy = hitPos * 8;
+                createExplosion(ball.x, ball.y);
+            }
+
+            // Scoring
+            if (ball.x - ball.radius < 0) {
+                aiScore++;
+                document.getElementById('aiScore').textContent = aiScore;
+                createScoreAnimation('right');
+                resetBall();
+                checkWinner();
+            }
+
+            if (ball.x + ball.radius > canvas.width) {
+                playerScore++;
+                document.getElementById('playerScore').textContent = playerScore;
+                createScoreAnimation('left');
+                resetBall();
+                checkWinner();
+            }
+        }
+
+        // Create explosion effect
+        function createExplosion(x, y) {
+            for (let i = 0; i < 15; i++) {
+                ball.particles.push(new Particle(x, y));
+            }
+        }
+
+        // Score animation
+        function createScoreAnimation(side) {
+            const scoreEl = side === 'left' ? 
+                document.getElementById('playerScore') : 
+                document.getElementById('aiScore');
+            scoreEl.style.animation = 'none';
+            setTimeout(() => {
+                scoreEl.style.animation = 'pulse 0.5s';
+            }, 10);
+        }
+
+        // Reset ball
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.dx = (Math.random() > 0.5 ? 1 : -1) * 5;
+            ball.dy = (Math.random() - 0.5) * 4;
+            ball.particles = [];
+        }
+
+        // Check winner
+        function checkWinner() {
+            if (playerScore >= winningScore) {
+                document.getElementById('winnerText').textContent = '🎉 YOU WIN! 🎉';
+                document.getElementById('gameOver').style.display = 'block';
+                gameRunning = false;
+            } else if (aiScore >= winningScore) {
+                document.getElementById('winnerText').textContent = '🤖 AI WINS! 🤖';
+                document.getElementById('gameOver').style.display = 'block';
+                gameRunning = false;
+            }
+        }
+
+        // Restart game
+        function restartGame() {
+            playerScore = 0;
+            aiScore = 0;
+            document.getElementById('playerScore').textContent = '0';
+            document.getElementById('aiScore').textContent = '0';
+            document.getElementById('gameOver').style.display = 'none';
+            gameRunning = true;
+            resetBall();
+            gameLoop();
+        }
+
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw elements
+            drawCenterLine();
+            
+            // Update and draw power-ups
+            spawnPowerUp();
+            powerUps.forEach((powerUp, index) => {
+                powerUp.update();
+                powerUp.draw();
+                
+                // Check collision with ball
+                if (powerUp.checkCollision(ball)) {
+                    applyPowerUp(powerUp);
+                    powerUps.splice(index, 1);
+                }
+            });
+
+            drawPaddle(player);
+            drawPaddle(ai);
+            drawBall();
+
+            // Update
+            updatePlayer();
+            updateAI();
+            updateBall();
+            updatePowerUps();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        gameLoop();
+    </script>
+</body>
+</html>
